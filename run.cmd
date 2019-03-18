@@ -1,0 +1,1 @@
+java -jar address-collector.jar example.xlsx
