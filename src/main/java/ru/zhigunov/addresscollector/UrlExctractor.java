@@ -3,6 +3,8 @@ package ru.zhigunov.addresscollector;
 import java.io.File;
 
 import org.apache.commons.lang.StringUtils;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.apache.poi.hssf.util.CellReference;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
@@ -20,7 +22,7 @@ import java.util.List;
  */
 public class UrlExctractor {
 
-//    private static Logger LOGGER = Logger.getLogger(UrlExctractor.class);
+    private static Logger LOGGER = LogManager.getLogger(UrlExctractor.class);
 
     /**
      * Extract urls from Excel file
@@ -56,6 +58,7 @@ public class UrlExctractor {
             Cell cell;
             for (int lineNumber = startLineNumber; lineNumber < startLineNumber + batchSize; lineNumber++) {
                 Row row = sheet.getRow(lineNumber);
+                if (row == null) break;
 
                 cellReference = new CellReference("A" + lineNumber);
                 cell = row.getCell(cellReference.getCol());
