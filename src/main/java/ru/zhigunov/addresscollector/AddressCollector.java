@@ -33,6 +33,7 @@ public class AddressCollector {
 
         List<DataRow> dataRows = ExcelOperator.extractRowsFromXls(filePath, batchSize, startCell);
         new WebCrawler(dataRows).fillDataRows();
+        dataRows.stream().forEach(System.out::println);
     }
 
     private static String Help() {

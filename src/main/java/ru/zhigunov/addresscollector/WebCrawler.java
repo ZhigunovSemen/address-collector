@@ -25,6 +25,10 @@ public class WebCrawler {
 
     private static Logger LOGGER = LogManager.getLogger(WebCrawler.class);
 
+    private static final String[] SEARCH_ADDRESS_SET = {"адрес", "офис:"};
+
+    private static final String[] SEARCH_PHONE_SET = {"+7", "тел.", "телефон:", "телефон", "8("};
+
     private List<DataRow> rowsList;
 
     public WebCrawler(List<DataRow> rowsList) {
@@ -39,7 +43,7 @@ public class WebCrawler {
     public void fillDataRows() {
         for (DataRow dataRow : rowsList) {
             fillCity(dataRow);
-            break;  // todo remove after test
+//            break;  // todo remove after test
         }
     }
 
@@ -49,18 +53,19 @@ public class WebCrawler {
      */
     public void fillCity(DataRow dataRow) {
         String domain = dataRow.getDomain();
-        if (DomainDictionary.getCities().containsKey(domain)) {
+        if (StringUtils.isNotBlank(domain) && DomainDictionary.getCities().containsKey(domain)) {
             dataRow.setCity(DomainDictionary.getCities().get(domain));
         }
         String stringUrl = dataRow.getDomain();
         if (StringUtils.isBlank(stringUrl)) stringUrl = dataRow.getURL();
         if (StringUtils.isBlank(stringUrl)) stringUrl = dataRow.getLandingPage();
-        stringUrl = "https://zoloto585.ru/";  // TODO remove after test
+//        stringUrl = "e-loco.ru";  // TODO remove after test
+        if (!stringUrl.startsWith("http://")) stringUrl = "http://" + stringUrl;
         stringUrl = removeSpecialChars(stringUrl);
 
         String city = extractCity(stringUrl);
         if (city == null) {
-            LOGGER.error("Не найден город для домена " + domain);
+            LOGGER.error("Не найден город для домена " + stringUrl);
             return;
         }
         DomainDictionary.getCities().put(domain, city);
@@ -139,16 +144,28 @@ public class WebCrawler {
      */
     private static String serchByAddress(Document doc) {
         // Выбираем все элементы на странице, которые содержат 'адрес'
-        Elements adressDiv = doc.body().getElementsContainingText("адрес");
+        for (String addressSearch : SEARCH_ADDRESS_SET) {
+            Elements adressDiv = doc.body().getElementsContainingText(addressSearch);
 
-        for (Element el : adressDiv) {
-            // разбиваем все на разделители 'адрес'
-            String elementWithAddress = el.text();
-            for (String afterAddress : elementWithAddress.toLowerCase().split("адрес")) {
-                // разбиваем адрес на ',' и пытаемся найти слова, содержащиеся в справочнике городов
-                for (String elementWord : afterAddress.split(",")) {
-                    if (CityDictionary.getCities().contains(elementWord.trim())) {
-                        return WordUtils.capitalize(elementWord.trim());
+            for (Element el : adressDiv) {
+                // разбиваем все на разделители
+                String elementWithAddress = el.text();
+                for (String afterAddress : elementWithAddress.toLowerCase().split(addressSearch)) {
+
+                    if (afterAddress.startsWith(":")) {
+                        afterAddress = afterAddress.substring(1);
+                    }
+                    // разбиваем адрес на ',' и пытаемся найти слова, содержащиеся в справочнике городов
+                    for (String elementWord : afterAddress.split(",", 7)) {
+                        if (elementWord.length() > 3 && CityDictionary.getCities().contains(elementWord.trim())) {
+                            return capitalizeCity(elementWord.trim());
+                        }
+                    }
+                    // Если не нашли через запятую, пытаемся через пробел (совсем крайний случай)
+                    for (String elementWord : afterAddress.split(" ", 7)) {
+                        if (elementWord.length() > 3 && CityDictionary.getCities().contains(elementWord.trim())) {
+                            return capitalizeCity(elementWord.trim());
+                        }
                     }
                 }
             }
@@ -163,54 +180,67 @@ public class WebCrawler {
      * @return
      */
     private String serchByPhone(Document doc) {
-
-        Elements phoneDivs = new Elements();
-        String[] searchPhoneSet = {"+7", "тел.", "телефон:", "телефон", "8("};
-        String delimeterText = "";
-        for (String searchBy : searchPhoneSet) {
-            phoneDivs = doc.body().getElementsContainingText(searchBy);
+        for (String searchBy : SEARCH_PHONE_SET) {
+            Elements phoneDivs = doc.body().getElementsContainingText(searchBy);
             if (phoneDivs != null && !phoneDivs.isEmpty()) {
-                delimeterText = searchBy;
-                break;
+                String delimeterText = searchBy
+                        .replace("+", "\\+")
+                        .replace(".", "\\.");
+
+                for (Element el : phoneDivs) {
+                    // разбиваем все на разделители
+                    String elementWithPhone = el.text();
+                    int i=0;
+                    for (String phoneSubString : elementWithPhone.toLowerCase().split(delimeterText)) {
+                        i++;
+                        if (i==1) {    // пропускаем все, что ДО "телефон"а
+                            continue;
+                        }
+                        phoneSubString = phoneSubString.replaceAll(" ", "");
+                        if (phoneSubString.startsWith(":")) {
+                            phoneSubString = phoneSubString.substring(1);
+                        }
+                        if (phoneSubString.startsWith("+7")) {
+                            phoneSubString = phoneSubString.substring(2);
+                        } else if (phoneSubString.startsWith("8")) {
+                            phoneSubString = phoneSubString.substring(1);
+                        }
+                        if (phoneSubString.startsWith("(")) {
+                            phoneSubString = phoneSubString.substring(1);
+                        }
+
+                        // После всех преобразований анализируем первые 3 или 4 цыфры - они должны совпадать с кодом города
+                        // Если совпадает, значит город найден
+                        String phoneText = phoneSubString.substring(0, 3);
+                        if (NumberUtils.isDigits(phoneText) && PhoneCodeDictionary.getPhoneMap().containsKey(phoneText)) {
+                            return PhoneCodeDictionary.getPhoneMap().get(phoneText);
+                        }
+                        phoneText = phoneSubString.substring(0, 4);
+                        if (NumberUtils.isDigits(phoneText) && PhoneCodeDictionary.getPhoneMap().containsKey(phoneText)) {
+                            return PhoneCodeDictionary.getPhoneMap().get(phoneText);
+                        }
+                    }
+                }
             }
         }
 
-        for (Element el : phoneDivs) {
-            // разбиваем все на разделители 'телефон'
-            String elementWithPhone = el.text();
-            int i=0;
-            for (String phoneSubString : elementWithPhone.toLowerCase().split("телефон")) {
-                i++;
-                if (i==1) {    // пропускаем все, что ДО "телефон"а
-                    continue;
-                }
-                phoneSubString = phoneSubString.replaceAll(" ", "");
-                if (phoneSubString.startsWith(":")) {
-                    phoneSubString = phoneSubString.substring(1);
-                }
-                if (phoneSubString.startsWith("+7")) {
-                    phoneSubString = phoneSubString.substring(2);
-                }
-                if (phoneSubString.startsWith("8")) {
-                    phoneSubString = phoneSubString.substring(1);
-                }
-                if (phoneSubString.startsWith("(")) {
-                    phoneSubString = phoneSubString.substring(1);
-                }
-
-                // После всех преобразований анализируем первые 3 или 4 цыфры - они должны совпадать с кодом города
-                // Если совпадает, значит город найден
-                String phoneText = phoneSubString.substring(0, 3);
-                if (NumberUtils.isDigits(phoneText) && PhoneCodeDictionary.getPhoneMap().containsKey(phoneText)) {
-                    return PhoneCodeDictionary.getPhoneMap().get(phoneText);
-                }
-                phoneText = phoneSubString.substring(0, 4);
-                if (NumberUtils.isDigits(phoneText) && PhoneCodeDictionary.getPhoneMap().containsKey(phoneText)) {
-                    return PhoneCodeDictionary.getPhoneMap().get(phoneText);
-                }
-            }
-        }
         return null;
+    }
+
+
+    /**
+     * Приводим город в достойный вид санкт-петербург -> Санкт-Петербург
+     * @param cityName
+     * @return
+     */
+    private static String capitalizeCity(String cityName) {
+        StringBuilder returnValue = new StringBuilder();
+        String[] parts = cityName.split("\\-");
+        for (String part : parts) {
+            if (returnValue.length() > 0) returnValue.append("-");
+            returnValue.append(StringUtils.capitalize(part));
+        }
+        return returnValue.toString();
     }
 
     /**
