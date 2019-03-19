@@ -14,15 +14,14 @@ import ru.zhigunov.addresscollector.dto.DataRow;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 /**
  * Extract urls from various sources
  */
-public class UrlExctractor {
+public class ExcelOperator {
 
-    private static Logger LOGGER = LogManager.getLogger(UrlExctractor.class);
+    private static Logger LOGGER = LogManager.getLogger(ExcelOperator.class);
 
     /**
      * Extract urls from Excel file
@@ -31,9 +30,9 @@ public class UrlExctractor {
      * @return
      * @throws Exception
      */
-    public static List<DataRow> extractFromXls(String xlsPath,
-                                              String batchSizeStr,
-                                              String startPosition) throws Exception {
+    public static List<DataRow> extractRowsFromXls(String xlsPath,
+                                                   String batchSizeStr,
+                                                   String startPosition) throws Exception {
 
         Validate.notEmpty(xlsPath);
         batchSizeStr = StringUtils.defaultString(batchSizeStr, "1000");
@@ -91,16 +90,14 @@ public class UrlExctractor {
 
                 dataRows.add(dataRow);
 
-//                LOGGER.info(String.format(" read from file %s", dataRow));
-                System.out.println(String.format(" read from file %s", dataRow));
+                LOGGER.info(String.format(" read from file %s", dataRow));
             }
 
         } catch (FileNotFoundException ex) {
-            ex.printStackTrace();
-//            LOGGER.error("File does not exist or cannot be open: " + xlsPath);
+            LOGGER.error("File does not exist or cannot be open: " + xlsPath);
         } catch (Exception ex) {
             ex.printStackTrace();
-//            LOGGER.error("Error: ", ex);
+            LOGGER.error("Error: ", ex);
         }
         return dataRows;
     }

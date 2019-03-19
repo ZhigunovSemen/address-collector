@@ -1,7 +1,7 @@
 <Configuration strict="true" name="XMLConfig"
                packages="ru.zhigunov.addresscollector">
     <Properties>
-        <Property name="filename">AddressCollector.log</Property>
+        <Property name="filename">logs/AddressCollector.log</Property>
     </Properties>
 
     <Appenders>
@@ -21,7 +21,7 @@
     </Loggers>
 
     <Loggers>
-        <Logger name="ru.zhigunov.addresscollector.**" level="debug" additivity="false">
+        <Logger name="ru.zhigunov.addresscollector.**" level="DEBUG" additivity="false">
             <AppenderRef ref="STDOUT"/>
             <AppenderRef ref="File"/>
         </Logger>

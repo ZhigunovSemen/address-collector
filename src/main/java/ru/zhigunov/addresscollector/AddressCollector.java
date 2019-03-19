@@ -1,11 +1,9 @@
 package ru.zhigunov.addresscollector;
 
 import org.apache.commons.lang.StringUtils;
-import org.apache.commons.lang3.Validate;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import ru.zhigunov.addresscollector.dto.DataRow;
-
 import java.util.List;
 
 
@@ -13,14 +11,15 @@ public class AddressCollector {
 
     private static Logger LOGGER = LogManager.getLogger(AddressCollector.class);
 
-    private String filePath;
-    private String batchSize;
-    private String startCell;
+    private String filePath = "example.xlsx";
+    private String batchSize = "1000";
+    private String startCell = "D2";
 
     void run(String[] args) throws Exception {
         LOGGER.info("Start...");
-        filePath = args[0];
-        Validate.isTrue(!StringUtils.isBlank(filePath), "Не указан путь к файлу. " + Help());
+        if (args.length == 0 || StringUtils.isBlank(args[0])) {
+            filePath = "example.xlsx";
+        }
         if (args.length > 1) {
             batchSize = args[1];
         }
@@ -28,7 +27,11 @@ public class AddressCollector {
             startCell = args[2];
         }
 
-        List<DataRow> dataRows = UrlExctractor.extractFromXls(filePath, batchSize, startCell);
+        Class.forName("ru.zhigunov.addresscollector.dictionary.CityDictionary");
+        Class.forName("ru.zhigunov.addresscollector.dictionary.DomainDictionary");
+        Class.forName("ru.zhigunov.addresscollector.dictionary.PhoneCodeDictionary");
+
+        List<DataRow> dataRows = ExcelOperator.extractRowsFromXls(filePath, batchSize, startCell);
         new WebCrawler(dataRows).fillDataRows();
     }
 
@@ -39,7 +42,6 @@ public class AddressCollector {
                 .append("\n <batchSize> (размер буфера считывания строк из файла)\n")
                 .append("\n <startCell> (позиция начала считывания потока url (для excel-файлов))\n")
                 .toString();
-
     }
 
 }

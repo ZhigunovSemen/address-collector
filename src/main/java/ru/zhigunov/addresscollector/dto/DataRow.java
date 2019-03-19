@@ -16,6 +16,11 @@ public class DataRow {
 
     private String Domain;
 
+    /**
+     * источник информации о городе
+     */
+    private String source;
+
     public Integer getLineNumber() {
         return LineNumber;
     }
@@ -64,6 +69,13 @@ public class DataRow {
         Domain = domain;
     }
 
+    public String getSource() {
+        return source;
+    }
+
+    public void setSource(String source) {
+        this.source = source;
+    }
 
     @Override
     public String toString() {
@@ -72,7 +84,7 @@ public class DataRow {
         sb.append(", Advertiser='").append(Advertiser).append('\'');
         sb.append(", city='").append(city).append('\'');
         sb.append(", URL='").append(URL).append('\'');
-        sb.append(", LandingPage='").append(LandingPage).append('\'');
+        sb.append(", LandingPage='").append(LandingPage.subSequence(0, Math.min(LandingPage.length(),30))).append('\'');
         sb.append(", Domain='").append(Domain).append('\'');
         sb.append('}');
         return sb.toString();
