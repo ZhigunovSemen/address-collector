@@ -4,6 +4,7 @@ import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import ru.zhigunov.addresscollector.dto.DataRow;
+
 import java.util.List;
 
 
@@ -30,10 +31,17 @@ public class AddressCollector {
         Class.forName("ru.zhigunov.addresscollector.dictionary.CityDictionary");
         Class.forName("ru.zhigunov.addresscollector.dictionary.DomainDictionary");
         Class.forName("ru.zhigunov.addresscollector.dictionary.PhoneCodeDictionary");
+        Class.forName("ru.zhigunov.addresscollector.dictionary.HostingProviderDictionary");
 
-        List<DataRow> dataRows = ExcelOperator.extractRowsFromXls(filePath, batchSize, startCell);
+        long usageMemory = Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory();
+        List<DataRow> dataRows = ExcelReader.extractRowsFromXls(filePath, batchSize, startCell);
         new WebCrawler(dataRows).fillDataRows();
-        dataRows.stream().forEach(System.out::println);
+        long usageMemoryAfter = Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory();
+
+        new ExcelWriter().saveToExcel(filePath, dataRows);
+        LOGGER.info(String.format("End thread. Memory usage: %d bytes", (usageMemoryAfter - usageMemory)));
+//        dataRows.stream().forEach(row -> System.out.println(row.getCity()));
+
     }
 
     private static String Help() {

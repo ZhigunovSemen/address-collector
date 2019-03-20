@@ -11,12 +11,16 @@ import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 import ru.zhigunov.addresscollector.dictionary.CityDictionary;
 import ru.zhigunov.addresscollector.dictionary.DomainDictionary;
+import ru.zhigunov.addresscollector.dictionary.HostingProviderDictionary;
 import ru.zhigunov.addresscollector.dictionary.PhoneCodeDictionary;
 import ru.zhigunov.addresscollector.dto.DataRow;
 
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.nio.charset.MalformedInputException;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Класс, заполняющий адрес
@@ -25,7 +29,7 @@ public class WebCrawler {
 
     private static Logger LOGGER = LogManager.getLogger(WebCrawler.class);
 
-    private static final String[] SEARCH_ADDRESS_SET = {"адрес", "офис:"};
+    private static final String[] SEARCH_ADDRESS_SET = {"г.", "адрес", "офис:"};
 
     private static final String[] SEARCH_PHONE_SET = {"+7", "тел.", "телефон:", "телефон", "8("};
 
@@ -43,7 +47,6 @@ public class WebCrawler {
     public void fillDataRows() {
         for (DataRow dataRow : rowsList) {
             fillCity(dataRow);
-//            break;  // todo remove after test
         }
     }
 
@@ -55,47 +58,57 @@ public class WebCrawler {
         String domain = dataRow.getDomain();
         if (StringUtils.isNotBlank(domain) && DomainDictionary.getCities().containsKey(domain)) {
             dataRow.setCity(DomainDictionary.getCities().get(domain));
+            dataRow.setSource("founded before");
+            return;
         }
-        String stringUrl = dataRow.getDomain();
+        String stringUrl = domain;
         if (StringUtils.isBlank(stringUrl)) stringUrl = dataRow.getURL();
         if (StringUtils.isBlank(stringUrl)) stringUrl = dataRow.getLandingPage();
-//        stringUrl = "e-loco.ru";  // TODO remove after test
         if (!stringUrl.startsWith("http://")) stringUrl = "http://" + stringUrl;
         stringUrl = removeSpecialChars(stringUrl);
 
-        String city = extractCity(stringUrl);
-        if (city == null) {
-            LOGGER.error("Не найден город для домена " + stringUrl);
+        String city = extractCity(stringUrl, dataRow);
+        DomainDictionary.getCities().put(domain, "");
+        if (StringUtils.isBlank(city)) {
+            LOGGER.error(String.format("Не найден город для домена %s (line %d)", domain, dataRow.getLineNumber()));
             return;
         }
-        DomainDictionary.getCities().put(domain, city);
-        LOGGER.info("Найден город " + city + " для домена " + domain);
+        LOGGER.info(String.format("Найден город %s для домена %s (line %d)", city, domain, dataRow.getLineNumber()));
         dataRow.setCity(city);
     }
 
-    public String extractCity(String baseUrlString) {
+    public String extractCity(String baseUrlString, DataRow dataRow) {
         URL baseUrl;
         String address;
         try {
             baseUrl = new URL(baseUrlString);
             Document doc = Jsoup.parse(baseUrl, 10000);
-
-            address = serchByAddress(doc);
-            if (address != null) return address;
+            // проплачен ли хостинг?
+            if (checkForHostingRedirect(doc)) {
+                dataRow.setSource("redirect to hosting provider");
+                LOGGER.debug(dataRow.getDomain() + " can not open page - redirecting to hosting provider");
+                return null;
+            }
 
             // если не нашли адрес, ищем вкладку контакты и в ней адрес, затем телефон
             Document contacDocument = findAndOpenContactPage(doc);
             if (contacDocument != null) {
-                address = serchByAddress(contacDocument);
+                address = serchByAddress(contacDocument, dataRow);
                 if (address != null) return address;
 
-                address = serchByPhone(contacDocument);
+                address = serchByPhone(contacDocument, dataRow);
                 if (address != null) return address;
             }
+            address = serchByAddress(doc, dataRow);
+            if (address != null) return address;
+
+            // если не нашли в контактах, ещё раз ищем по телефону на основной странице
+            address = serchByPhone(contacDocument, dataRow);
+            if (address != null) return address;
         } catch (Exception ex) {
             LOGGER.error(ex);
         }
-        new String("Z0LcW");
+//        new String("Z0LcW");
         return null;
     }
 
@@ -120,7 +133,7 @@ public class WebCrawler {
                     return contactsDoc;
                 } catch (MalformedURLException ex) {
                     try {
-                        contactsUrl = new URL(doc.location() + contactUrlString);
+                        contactsUrl = new URL(removeSpecialChars(doc.location()) + contactUrlString);
                         contactsDoc = Jsoup.parse(contactsUrl, 5000);
                         return contactsDoc;
                     } catch (Exception e) {
@@ -142,28 +155,39 @@ public class WebCrawler {
      * @param doc
      * @return
      */
-    private static String serchByAddress(Document doc) {
+    private static String serchByAddress(Document doc, DataRow dataRow) {
         // Выбираем все элементы на странице, которые содержат 'адрес'
         for (String addressSearch : SEARCH_ADDRESS_SET) {
-            Elements adressDiv = doc.body().getElementsContainingText(addressSearch);
 
-            for (Element el : adressDiv) {
+            String delimeterText = addressSearch
+                    .replace("+", "\\+")
+                    .replace(".", "\\.");
+            List<String> adressDiv = Arrays.asList(doc.body().text().split(delimeterText));
+
+            int i=0;
+            for (String el : adressDiv) {
+                i++;
+                if (i==1 || el.length() < 3) {    // пропускаем все, что ДО разделителя
+                    continue;
+                }
                 // разбиваем все на разделители
-                String elementWithAddress = el.text();
-                for (String afterAddress : elementWithAddress.toLowerCase().split(addressSearch)) {
+                String elementWithAddress = el;
+                for (String afterAddress : elementWithAddress.toLowerCase().split(delimeterText)) {
 
                     if (afterAddress.startsWith(":")) {
                         afterAddress = afterAddress.substring(1);
                     }
                     // разбиваем адрес на ',' и пытаемся найти слова, содержащиеся в справочнике городов
-                    for (String elementWord : afterAddress.split(",", 7)) {
+                    for (String elementWord : afterAddress.split(",", 8)) {
                         if (elementWord.length() > 3 && CityDictionary.getCities().contains(elementWord.trim())) {
+                            dataRow.setSource(afterAddress.substring(0, Math.min(afterAddress.length(), 40)));
                             return capitalizeCity(elementWord.trim());
                         }
                     }
                     // Если не нашли через запятую, пытаемся через пробел (совсем крайний случай)
-                    for (String elementWord : afterAddress.split(" ", 7)) {
+                    for (String elementWord : afterAddress.split(" ", 8)) {
                         if (elementWord.length() > 3 && CityDictionary.getCities().contains(elementWord.trim())) {
+                            dataRow.setSource(afterAddress.substring(0, Math.min(afterAddress.length(), 40)));
                             return capitalizeCity(elementWord.trim());
                         }
                     }
@@ -179,7 +203,9 @@ public class WebCrawler {
      * @param doc
      * @return
      */
-    private String serchByPhone(Document doc) {
+    private String serchByPhone(Document doc, DataRow dataRow) {
+        if (doc == null || doc.body() == null || StringUtils.isBlank(doc.body().text())) return null;
+
         for (String searchBy : SEARCH_PHONE_SET) {
             Elements phoneDivs = doc.body().getElementsContainingText(searchBy);
             if (phoneDivs != null && !phoneDivs.isEmpty()) {
@@ -193,7 +219,7 @@ public class WebCrawler {
                     int i=0;
                     for (String phoneSubString : elementWithPhone.toLowerCase().split(delimeterText)) {
                         i++;
-                        if (i==1) {    // пропускаем все, что ДО "телефон"а
+                        if (i==1) {    // пропускаем все, что ДО раззделителя
                             continue;
                         }
                         phoneSubString = phoneSubString.replaceAll(" ", "");
@@ -213,10 +239,12 @@ public class WebCrawler {
                         // Если совпадает, значит город найден
                         String phoneText = phoneSubString.substring(0, 3);
                         if (NumberUtils.isDigits(phoneText) && PhoneCodeDictionary.getPhoneMap().containsKey(phoneText)) {
+                            dataRow.setSource(phoneSubString.substring(0, Math.min(phoneSubString.length(), 40)));
                             return PhoneCodeDictionary.getPhoneMap().get(phoneText);
                         }
                         phoneText = phoneSubString.substring(0, 4);
                         if (NumberUtils.isDigits(phoneText) && PhoneCodeDictionary.getPhoneMap().containsKey(phoneText)) {
+                            dataRow.setSource(phoneSubString.substring(0, Math.min(phoneSubString.length(), 40)));
                             return PhoneCodeDictionary.getPhoneMap().get(phoneText);
                         }
                     }
@@ -225,6 +253,32 @@ public class WebCrawler {
         }
 
         return null;
+    }
+
+
+    /**
+     * Проверка, не переброшены ли мы на страницу хостинг-провайдера
+     * @param doc
+     * @return
+     */
+    private static boolean checkForHostingRedirect(Document doc) {
+        String location = doc.location();
+        try {
+            URL url = new URL(location);
+            LOGGER.info(url.getHost());
+        } catch (MalformedURLException ex) {
+            ex.printStackTrace();
+        }
+        if (StringUtils.isBlank(location)) return false;
+        if (location.startsWith("http://")) location = location.substring(7);
+        if (location.startsWith("https://")) location = location.substring(8);
+        if (location.indexOf("/") > 0) {
+            location = location.substring(0, location.indexOf("/"));
+        }
+        String[] urlParts = location.split("\\.");
+        if (urlParts.length < 2) return false;
+        String mainUrlAddress = urlParts[urlParts.length-2] + "." + urlParts[urlParts.length-1];
+        return HostingProviderDictionary.getProviders().contains(mainUrlAddress);
     }
 
 

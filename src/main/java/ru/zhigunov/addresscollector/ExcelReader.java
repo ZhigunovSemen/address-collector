@@ -17,11 +17,12 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Extract urls from various sources
+ * Extract urls from excel sources
  */
-public class ExcelOperator {
+public class ExcelReader {
 
-    private static Logger LOGGER = LogManager.getLogger(ExcelOperator.class);
+    private static Logger LOGGER = LogManager.getLogger(ExcelReader.class);
+
 
     /**
      * Extract urls from Excel file
@@ -90,7 +91,7 @@ public class ExcelOperator {
 
                 dataRows.add(dataRow);
 
-                LOGGER.info(String.format(" read from file %s", dataRow));
+                LOGGER.info(String.format(" read from file line number: %s", dataRow.getLineNumber()));
             }
 
         } catch (FileNotFoundException ex) {
