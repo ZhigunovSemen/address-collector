@@ -28,7 +28,7 @@ public class ExcelWriter {
 
 
     /**
-     * Extract urls from Excel file
+     * Save data to excel file
      * @param xlsPath
      * @param dataRows
      * @return
@@ -36,7 +36,6 @@ public class ExcelWriter {
      */
     public boolean saveToExcel(String xlsPath,
                                      Collection<DataRow> dataRows) throws Exception {
-
         Validate.notEmpty(xlsPath);
 
         File file = new File(xlsPath);
@@ -61,7 +60,10 @@ public class ExcelWriter {
                 if (StringUtils.isNotBlank(city)) {
                     cellReference = new CellReference("B" + lineNumber);
                     cell = row.getCell(cellReference.getCol());
-                    if (cell == null) continue;
+                    if (cell == null) {
+                        cell = row.createCell(cellReference.getCol());
+                    }
+                    cell.setCellType(Cell.CELL_TYPE_STRING);
                     cell.setCellValue(city);
                 }
 
@@ -69,10 +71,12 @@ public class ExcelWriter {
                 if (StringUtils.isNotBlank(source)) {
                     cellReference = new CellReference("F" + lineNumber);
                     cell = row.getCell(cellReference.getCol());
-                    if (cell == null) continue;
+                    if (cell == null) {
+                        cell = row.createCell(cellReference.getCol());
+                    }
+                    cell.setCellType(Cell.CELL_TYPE_STRING);
                     cell.setCellValue(source);
                 }
-                LOGGER.info(String.format(" read from file line number: %s", dataRow.getLineNumber()));
             }
 
             fip.close();
@@ -92,20 +96,5 @@ public class ExcelWriter {
         return true;
     }
 
-
-
-    private static String extractCellValue(Cell cell) {
-        if (cell != null) {
-            switch (cell.getCellType()) {
-                case Cell.CELL_TYPE_BOOLEAN:
-                    return String.valueOf(cell.getBooleanCellValue());
-                case Cell.CELL_TYPE_NUMERIC:
-                    return String.valueOf(cell.getNumericCellValue());
-                case Cell.CELL_TYPE_STRING:
-                    return cell.getStringCellValue();
-            }
-        }
-        return null;
-    }
 
 }

@@ -6,11 +6,11 @@
 
     <Appenders>
         <Appender type="Console" name="STDOUT">
-            <Layout type="PatternLayout" pattern="%d{yyyy-MM-dd HH:mm:ss} %-5p %c{1}:%L - %m%n"/>
+            <Layout type="PatternLayout" pattern="%d{yyyy-MM-dd HH:mm:ss} %-5p [%t] %c{1}.%M:%L - %m%n"/>
         </Appender>
         <Appender type="File" name="File" fileName="${filename}">
             <Layout type="PatternLayout">
-                <Pattern>%d{yyyy-MM-dd HH:mm:ss} %-5p %c{1}:%L - %m%n</Pattern>
+                <Pattern>%d{yyyy-MM-dd HH:mm:ss} %-5p [%t] %c{1}.%M:%L - %m%n</Pattern>
             </Layout>
         </Appender>
     </Appenders>

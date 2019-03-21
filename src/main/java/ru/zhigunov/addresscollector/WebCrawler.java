@@ -15,6 +15,7 @@ import ru.zhigunov.addresscollector.dictionary.HostingProviderDictionary;
 import ru.zhigunov.addresscollector.dictionary.PhoneCodeDictionary;
 import ru.zhigunov.addresscollector.dto.DataRow;
 
+import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.nio.charset.MalformedInputException;
@@ -29,6 +30,7 @@ public class WebCrawler {
 
     private static Logger LOGGER = LogManager.getLogger(WebCrawler.class);
 
+    private static final String[] SEARCH_CONTACTS_SET = {"контакт", "о компании"};
     private static final String[] SEARCH_ADDRESS_SET = {"г.", "адрес", "офис:"};
 
     private static final String[] SEARCH_PHONE_SET = {"+7", "тел.", "телефон:", "телефон", "8("};
@@ -56,33 +58,47 @@ public class WebCrawler {
      */
     public void fillCity(DataRow dataRow) {
         String domain = dataRow.getDomain();
-        if (StringUtils.isNotBlank(domain) && DomainDictionary.getCities().containsKey(domain)) {
+        if (StringUtils.isBlank(domain)) return;
+        String stringUrl = domain;
+        if (DomainDictionary.getCities().containsKey(domain)) {
             dataRow.setCity(DomainDictionary.getCities().get(domain));
             dataRow.setSource("founded before");
             return;
         }
-        String stringUrl = domain;
         if (StringUtils.isBlank(stringUrl)) stringUrl = dataRow.getURL();
         if (StringUtils.isBlank(stringUrl)) stringUrl = dataRow.getLandingPage();
+        if (stringUrl.equalsIgnoreCase("n/a")) return;
+
         if (!stringUrl.startsWith("http://")) stringUrl = "http://" + stringUrl;
         stringUrl = removeSpecialChars(stringUrl);
 
         String city = extractCity(stringUrl, dataRow);
-        DomainDictionary.getCities().put(domain, "");
+
         if (StringUtils.isBlank(city)) {
             LOGGER.error(String.format("Не найден город для домена %s (line %d)", domain, dataRow.getLineNumber()));
+            DomainDictionary.getCities().put(domain, "");
             return;
         }
+
         LOGGER.info(String.format("Найден город %s для домена %s (line %d)", city, domain, dataRow.getLineNumber()));
+        DomainDictionary.getCities().put(domain, city);
         dataRow.setCity(city);
     }
 
+
+    /**
+     * Достаем содержимое страницы по {@link WebCrawler#extractCity#baseUrlString} <br>
+     *     и записываем комментарий откуа вытащили в {@link WebCrawler#extractCity#dataRow}.
+     * @param baseUrlString
+     * @param dataRow
+     * @return
+     */
     public String extractCity(String baseUrlString, DataRow dataRow) {
         URL baseUrl;
         String address;
         try {
             baseUrl = new URL(baseUrlString);
-            Document doc = Jsoup.parse(baseUrl, 10000);
+            Document doc = tryToOpenContactUrl(baseUrlString, 10000);
             // проплачен ли хостинг?
             if (checkForHostingRedirect(doc)) {
                 dataRow.setSource("redirect to hosting provider");
@@ -91,7 +107,7 @@ public class WebCrawler {
             }
 
             // если не нашли адрес, ищем вкладку контакты и в ней адрес, затем телефон
-            Document contacDocument = findAndOpenContactPage(doc);
+            Document contacDocument = findAndOpenContactPage(doc, baseUrlString);
             if (contacDocument != null) {
                 address = serchByAddress(contacDocument, dataRow);
                 if (address != null) return address;
@@ -103,7 +119,7 @@ public class WebCrawler {
             if (address != null) return address;
 
             // если не нашли в контактах, ещё раз ищем по телефону на основной странице
-            address = serchByPhone(contacDocument, dataRow);
+            address = serchByPhone(doc, dataRow);
             if (address != null) return address;
         } catch (Exception ex) {
             LOGGER.error(ex);
@@ -116,39 +132,40 @@ public class WebCrawler {
      * Ищем всех кандидатов на вкладку "контакты" и осуществляем переход на страницу контактов
      * @param doc
      */
-    private Document findAndOpenContactPage(Document doc) {
-        URL contactsUrl;
+    private Document findAndOpenContactPage(Document doc, String baseUrlString) {
         String contactUrlString = null;
-        Document contactsDoc;
+        Document contactsDoc = null;
         for (Element contactsElementLink : doc.body().select("a")) {
-            if (contactsElementLink.text().trim().contains("Контакты")) {
-                contactUrlString = contactsElementLink.attr("href");
-                if (StringUtils.isBlank(contactUrlString)) {
-                    continue;
-                }
-
-                try {
-                    contactsUrl = new URL(contactUrlString);
-                    contactsDoc = Jsoup.parse(contactsUrl, 5000);
-                    return contactsDoc;
-                } catch (MalformedURLException ex) {
-                    try {
-                        contactsUrl = new URL(removeSpecialChars(doc.location()) + contactUrlString);
-                        contactsDoc = Jsoup.parse(contactsUrl, 5000);
-                        return contactsDoc;
-                    } catch (Exception e) {
-                        LOGGER.error("Unable to open contacts link: " + contactUrlString);
+            for (String contactSearch : SEARCH_CONTACTS_SET) {
+                if (contactsElementLink.text().trim().contains(contactSearch)) {
+                    contactUrlString = contactsElementLink.attr("href");
+                    if (StringUtils.isBlank(contactUrlString)) {
+                        continue;
                     }
-                } catch (Exception ex) {
-                    LOGGER.error("Unable to open contacts link: " + contactUrlString);
+                    contactsDoc = tryToOpenContactUrl(contactUrlString, 5000);
+                    if (contactsDoc == null) {
+                        contactsDoc = tryToOpenContactUrl(removeSpecialChars(doc.location()) + contactUrlString, 5000);
+                    }
+                    if (contactsDoc == null) {
+                        contactsDoc = tryToOpenContactUrl(removeSpecialChars(baseUrlString) + contactUrlString, 5000);
+                    }
+                    if (null != contactsDoc) return contactsDoc;
                 }
             }
         }
-
         LOGGER.error("Не найдено вкладки \"Контакты\".");
         return null;
     }
 
+    private static Document tryToOpenContactUrl(String urlString, int timeout) {
+        Document contactsDoc = null;
+        try {
+            URL contactsUrl = new URL(urlString);
+            return Jsoup.connect(urlString).timeout(timeout).ignoreHttpErrors(true).validateTLSCertificates(false).get();
+        } catch (IOException ex) {
+            return null;
+        }
+    }
 
     /**
      * Выбираем все элементы на странице, которые содержат 'адрес', и пытаемся найти город
@@ -161,11 +178,12 @@ public class WebCrawler {
 
             String delimeterText = addressSearch
                     .replace("+", "\\+")
-                    .replace(".", "\\.");
-            List<String> adressDiv = Arrays.asList(doc.body().text().split(delimeterText));
+                    .replace(".", "\\.")
+                        .replace("(", "\\(");
+            String[] adressDivs = doc.body().text().toLowerCase().split(delimeterText);
 
             int i=0;
-            for (String el : adressDiv) {
+            for (String el : adressDivs) {
                 i++;
                 if (i==1 || el.length() < 3) {    // пропускаем все, что ДО разделителя
                     continue;
@@ -178,14 +196,14 @@ public class WebCrawler {
                         afterAddress = afterAddress.substring(1);
                     }
                     // разбиваем адрес на ',' и пытаемся найти слова, содержащиеся в справочнике городов
-                    for (String elementWord : afterAddress.split(",", 8)) {
+                    for (String elementWord : afterAddress.split(",", 10)) {
                         if (elementWord.length() > 3 && CityDictionary.getCities().contains(elementWord.trim())) {
                             dataRow.setSource(afterAddress.substring(0, Math.min(afterAddress.length(), 40)));
                             return capitalizeCity(elementWord.trim());
                         }
                     }
                     // Если не нашли через запятую, пытаемся через пробел (совсем крайний случай)
-                    for (String elementWord : afterAddress.split(" ", 8)) {
+                    for (String elementWord : afterAddress.split(" ", 10)) {
                         if (elementWord.length() > 3 && CityDictionary.getCities().contains(elementWord.trim())) {
                             dataRow.setSource(afterAddress.substring(0, Math.min(afterAddress.length(), 40)));
                             return capitalizeCity(elementWord.trim());
@@ -211,7 +229,8 @@ public class WebCrawler {
             if (phoneDivs != null && !phoneDivs.isEmpty()) {
                 String delimeterText = searchBy
                         .replace("+", "\\+")
-                        .replace(".", "\\.");
+                        .replace(".", "\\.")
+                        .replace("(", "\\(");
 
                 for (Element el : phoneDivs) {
                     // разбиваем все на разделители
