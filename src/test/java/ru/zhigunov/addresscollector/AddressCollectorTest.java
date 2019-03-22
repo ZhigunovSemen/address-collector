@@ -36,7 +36,7 @@ public class AddressCollectorTest {
 //        String[] a = Pattern.compile("(?i)abc", Pattern.CASE_INSENSITIVE).split("asdasABCjkj");
 
         int line = 0;
-        int loadQuantity = 100;
+        int loadQuantity = 2000;
         int maxLines = 1200;
         int numThreads = Runtime.getRuntime().availableProcessors();
 
@@ -50,15 +50,7 @@ public class AddressCollectorTest {
                         new AddressCollector(new String[]{ "example.xlsx", String.valueOf(loadQuantity), String.valueOf(line) })
                 );
             }
-            List<Future<Object>> futures = executorService.invokeAll(processors);
-
-            for (Future future : futures) {
-                try {
-                    future.get();
-                } catch (Exception ex) {
-                    LOGGER.error(ex);
-                }
-            }
+            executorService.invokeAll(processors);
             processors.clear();
         }
 

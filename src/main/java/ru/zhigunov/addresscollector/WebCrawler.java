@@ -32,7 +32,6 @@ public class WebCrawler {
 
     private static final String[] SEARCH_CONTACTS_SET = {"контакт", "о компании"};
     private static final String[] SEARCH_ADDRESS_SET = {"г.", "адрес", "офис:"};
-
     private static final String[] SEARCH_PHONE_SET = {"+7", "тел.", "телефон:", "телефон", "8("};
 
     private List<DataRow> rowsList;
@@ -48,7 +47,9 @@ public class WebCrawler {
      */
     public void fillDataRows() {
         for (DataRow dataRow : rowsList) {
-            fillCity(dataRow);
+            if (StringUtils.isBlank(dataRow.getCity()) ) {
+                fillCity(dataRow);
+            }
         }
     }
 
@@ -94,10 +95,8 @@ public class WebCrawler {
      * @return
      */
     public String extractCity(String baseUrlString, DataRow dataRow) {
-        URL baseUrl;
         String address;
         try {
-            baseUrl = new URL(baseUrlString);
             Document doc = tryToOpenContactUrl(baseUrlString, 10000);
             // проплачен ли хостинг?
             if (checkForHostingRedirect(doc)) {
@@ -115,16 +114,15 @@ public class WebCrawler {
                 address = serchByPhone(contacDocument, dataRow);
                 if (address != null) return address;
             }
+            // если не нашли в контактах, ещё раз ищем по адресу и телефону на основной странице
             address = serchByAddress(doc, dataRow);
             if (address != null) return address;
 
-            // если не нашли в контактах, ещё раз ищем по телефону на основной странице
             address = serchByPhone(doc, dataRow);
             if (address != null) return address;
         } catch (Exception ex) {
             LOGGER.error(ex);
         }
-//        new String("Z0LcW");
         return null;
     }
 
@@ -158,9 +156,7 @@ public class WebCrawler {
     }
 
     private static Document tryToOpenContactUrl(String urlString, int timeout) {
-        Document contactsDoc = null;
         try {
-            URL contactsUrl = new URL(urlString);
             return Jsoup.connect(urlString).timeout(timeout).ignoreHttpErrors(true).validateTLSCertificates(false).get();
         } catch (IOException ex) {
             return null;
@@ -302,7 +298,8 @@ public class WebCrawler {
 
 
     /**
-     * Приводим город в достойный вид санкт-петербург -> Санкт-Петербург
+     * Приводим город в достойный вид с заглавной буквы<br>
+     *     например, санкт-петербург -> Санкт-Петербург
      * @param cityName
      * @return
      */
