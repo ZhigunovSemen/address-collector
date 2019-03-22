@@ -27,19 +27,14 @@ public class ExcelReader {
     /**
      * Extract urls from Excel file
      * @param xlsPath
-     * @param startPosition
+     * @param startLineNumber
      * @return
      * @throws Exception
      */
     public static List<DataRow> extractRowsFromXls(String xlsPath,
-                                                   String batchSizeStr,
-                                                   String startPosition) throws Exception {
-
+                                                   int loadQuantity,
+                                                   int startLineNumber) throws Exception {
         Validate.notEmpty(xlsPath);
-        batchSizeStr = StringUtils.defaultString(batchSizeStr, "1000");
-        Integer batchSize = Integer.valueOf(batchSizeStr);
-        startPosition = StringUtils.defaultString(startPosition, "D2");
-
         List<DataRow> dataRows = new ArrayList<>();
 
         File file = new File(xlsPath);
@@ -48,15 +43,14 @@ public class ExcelReader {
                 throw new FileNotFoundException();
             }
 
-            // extract line number, ex. D2 -> 2
-            Integer startLineNumber = Integer.valueOf(startPosition.replaceAll("\\D+",""));
+//            Integer startLineNumber = Integer.valueOf(startPosition.replaceAll("\\D+",""));       // extract line number, ex. D2 -> 2
 
             XSSFWorkbook workbook = new XSSFWorkbook(fip);
             Sheet sheet = workbook.getSheetAt(0);
 
             CellReference cellReference;
             Cell cell;
-            for (int lineNumber = startLineNumber; lineNumber < startLineNumber + batchSize; lineNumber++) {
+            for (int lineNumber = startLineNumber; lineNumber < startLineNumber + loadQuantity; lineNumber++) {
                 Row row = sheet.getRow(lineNumber);
                 if (row == null) break;
 
@@ -93,7 +87,6 @@ public class ExcelReader {
 
                 LOGGER.info(String.format(" read from file line number: %s", dataRow.getLineNumber()));
             }
-
         } catch (FileNotFoundException ex) {
             LOGGER.error("File does not exist or cannot be open: " + xlsPath);
         } catch (Exception ex) {

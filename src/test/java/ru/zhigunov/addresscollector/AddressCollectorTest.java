@@ -33,32 +33,7 @@ public class AddressCollectorTest {
 
     @Test
     public void testRun() throws Exception {
-//        String[] a = Pattern.compile("(?i)abc", Pattern.CASE_INSENSITIVE).split("asdasABCjkj");
-
-        int line = 0;
-        int loadQuantity = 2000;
-        int maxLines = 1200;
-        int numThreads = Runtime.getRuntime().availableProcessors();
-
-        ExecutorService executorService = Executors.newFixedThreadPool(numThreads);
-
-        while (line < maxLines) {
-            List<Callable<Object>> processors = new ArrayList<>();
-            for (int i = 1; i <= numThreads; i++) {
-                line+=loadQuantity;
-                processors.add(
-                        new AddressCollector(new String[]{ "example.xlsx", String.valueOf(loadQuantity), String.valueOf(line) })
-                );
-            }
-            executorService.invokeAll(processors);
-            processors.clear();
-        }
-
+        new AddressCollector(new String[]{ "example.xlsx" , "10", "2", "2000"}).run();
     }
 
-
-    @Test
-    public void testRun2() throws Exception {
-        new AddressCollector(new String[]{ "example.xlsx", "1", "1088" }).call();
-    }
 }
